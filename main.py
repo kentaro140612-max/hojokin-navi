@@ -2,65 +2,66 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import re
 
 def run_scraper():
     AIRTABLE_TOKEN = os.getenv('AIRTABLE_TOKEN')
     AIRTABLE_BASE_ID = os.getenv('AIRTABLE_BASE_ID')
     AIRTABLE_TABLE_NAME = os.getenv('AIRTABLE_TABLE_NAME')
     
-    # 2026年時点の最新URL（支援情報ヘッドライン）
+    # ターゲット：J-Net21 支援情報一覧
     TARGET_URL = "https://j-net21.smrj.go.jp/snavi/support/index.html"
     
     try:
-        print(f"DEBUG: {TARGET_URL} を解析中...")
-        res = requests.get(TARGET_URL, timeout=15)
+        print(f"DEBUG: {TARGET_URL} をスキャン中...")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        res = requests.get(TARGET_URL, headers=headers, timeout=20)
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, 'html.parser')
         
         records = []
-        # 論理的アプローチ: 特定のclassではなく、補助金詳細へのリンクを持つ要素を網羅的に探す
-        # J-Net21の標準的なリンク形式 '/snavi/support/entry/...' を対象にする
-        links = soup.find_all('a', href=True)
+        # 修正の核：リンク（<a>タグ）の中から「support」と「entry」を含むものを全て抽出
+        all_links = soup.find_all('a', href=re.compile(r'/snavi/support/entry/'))
         
+        print(f"DEBUG: 候補リンクを {len(all_links)} 件発見しました。")
+
         seen_urls = set()
-        for link in links:
+        for link in all_links:
             href = link.get('href')
-            # 補助金詳細ページへのリンクパターンを特定
-            if '/snavi/support/entry/' in href:
-                full_url = "https://j-net21.smrj.go.jp" + href
-                if full_url in seen_urls: continue
-                
-                # タイトル取得（リンク内テキストまたは親要素から）
-                title = link.get_text(strip=True)
-                if len(title) < 5: continue # 短すぎるテキストは除外
-                
-                records.append({
-                    "fields": {
-                        "title": title[:100], # Airtableの制限考慮
-                        "region": "全国・広域",
-                        "source_url": full_url
-                    }
-                })
-                seen_urls.add(full_url)
-                if len(records) >= 5: break # 負荷軽減のため5件
+            full_url = "https://j-net21.smrj.go.jp" + href if href.startswith('/') else href
+            
+            if full_url in seen_urls: continue
+            
+            # タイトル取得：リンク内、あるいは隣接するテキストから取得
+            title = link.get_text(strip=True)
+            if not title or len(title) < 10: # 補助金名として短すぎるものは無視
+                continue
+
+            records.append({
+                "fields": {
+                    "title": title,
+                    "region": "全国・広域",
+                    "source_url": full_url
+                }
+            })
+            seen_urls.add(full_url)
+            if len(records) >= 5: break
 
         if not records:
-            # バックアッププラン：別のセレクタを試行
-            print("DEBUG: 予備の解析ロジックを実行中...")
-            # ここでHTML全体を出力して構造を確認（デバッグ用）
-            print(f"HTML概要(先頭500文字): {soup.prettify()[:500]}")
+            print("【失敗】有効なデータが抽出できませんでした。HTML出力を確認してください。")
             return
 
-        # 3. Airtableへの送信
+        # Airtable送信
         airtable_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
         headers = {"Authorization": f"Bearer {AIRTABLE_TOKEN}", "Content-Type": "application/json"}
         response = requests.post(airtable_url, headers=headers, json={"records": records})
         
-        print(f"DEBUG: ステータスコード: {response.status_code}")
         if response.status_code == 200:
-            print(f"【成功】{len(records)}件の最新情報を保存しました。")
+            print(f"【成功】Airtableに {len(records)} 件保存しました。")
         else:
-            print(f"【失敗】Airtableエラー: {response.text}")
+            print(f"【エラー】Airtableレスポンス: {response.text}")
             
     except Exception as e:
         print(f"【致命的エラー】: {e}")
