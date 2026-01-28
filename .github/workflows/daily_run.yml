@@ -2,9 +2,8 @@ name: Daily Subsidy Portal Update
 
 on:
   schedule:
-    # 毎日 00:00 UTC (日本時間 09:00) に実行
     - cron: '0 0 * * *'
-  workflow_dispatch: # 手動実行ボタンも残す
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,7 +13,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: [email protected]
+        uses: actions/setup-python@v4  # ここを [] なしの形式に修正
         with:
           python-version: '3.9'
 
