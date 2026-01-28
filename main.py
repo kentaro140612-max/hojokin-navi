@@ -1,56 +1,43 @@
 import os
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
-import re
 
 def run_scraper():
     AIRTABLE_TOKEN = os.getenv('AIRTABLE_TOKEN')
     AIRTABLE_BASE_ID = os.getenv('AIRTABLE_BASE_ID')
     AIRTABLE_TABLE_NAME = os.getenv('AIRTABLE_TABLE_NAME')
     
-    # ターゲット：J-Net21 支援情報一覧
-    TARGET_URL = "https://j-net21.smrj.go.jp/snavi/support/index.html"
+    # ターゲット：東京くらしWEB（東京都 助成・補助金一覧）
+    # 理由：行政サイトの中でも構造がシンプルで、スクレイピング遮断が少ない
+    TARGET_URL = "https://www.shouhiseikatu.metro.tokyo.lg.jp/sodan/jyosei/"
     
     try:
         print(f"DEBUG: {TARGET_URL} をスキャン中...")
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        res = requests.get(TARGET_URL, headers=headers, timeout=20)
+        res = requests.get(TARGET_URL, timeout=20)
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, 'html.parser')
         
         records = []
-        # 修正の核：リンク（<a>タグ）の中から「support」と「entry」を含むものを全て抽出
-        all_links = soup.find_all('a', href=re.compile(r'/snavi/support/entry/'))
+        # 東京都のサイト構造：dlタグ内のdt/ddに情報がある
+        items = soup.find_all('dt')
         
-        print(f"DEBUG: 候補リンクを {len(all_links)} 件発見しました。")
-
-        seen_urls = set()
-        for link in all_links:
-            href = link.get('href')
-            full_url = "https://j-net21.smrj.go.jp" + href if href.startswith('/') else href
-            
-            if full_url in seen_urls: continue
-            
-            # タイトル取得：リンク内、あるいは隣接するテキストから取得
-            title = link.get_text(strip=True)
-            if not title or len(title) < 10: # 補助金名として短すぎるものは無視
-                continue
-
-            records.append({
-                "fields": {
-                    "title": title,
-                    "region": "全国・広域",
-                    "source_url": full_url
-                }
-            })
-            seen_urls.add(full_url)
-            if len(records) >= 5: break
+        for dt in items[:5]:
+            link_tag = dt.find('a')
+            if link_tag:
+                title = link_tag.get_text(strip=True)
+                href = link_tag.get('href')
+                full_url = "https://www.shouhiseikatu.metro.tokyo.lg.jp/sodan/jyosei/" + href
+                
+                records.append({
+                    "fields": {
+                        "title": title,
+                        "region": "東京都",
+                        "source_url": full_url
+                    }
+                })
 
         if not records:
-            print("【失敗】有効なデータが抽出できませんでした。HTML出力を確認してください。")
+            print("【失敗】東京都のサイトからも抽出できませんでした。")
             return
 
         # Airtable送信
@@ -59,9 +46,9 @@ def run_scraper():
         response = requests.post(airtable_url, headers=headers, json={"records": records})
         
         if response.status_code == 200:
-            print(f"【成功】Airtableに {len(records)} 件保存しました。")
+            print(f"【成功】東京都の情報を {len(records)} 件保存しました。")
         else:
-            print(f"【エラー】Airtableレスポンス: {response.text}")
+            print(f"【エラー】Airtable: {response.text}")
             
     except Exception as e:
         print(f"【致命的エラー】: {e}")
