@@ -27,8 +27,8 @@ def ai_summarize(title):
         return "・内容：詳細は公式URLを確認してください。"
 
 def generate_html_and_sitemap(subsidies):
-    # GoogleフォームのURL（ご自身のIDに差し替え済みか最終確認してください）
-    google_form_url = "https://docs.google.com/forms/d/e/1FAIpQLSddIW5zNLUuZLyQWIESX0EOZWZUM3dGM6pdW9Luw20YTiEuwg/viewform"
+    # 確定したGoogleフォームURL
+    google_form_url = "https://docs.google.com/forms/d/e/1FAIpQLSddIW5zNLUuZLyQWIESX0EOZWZUM3dGM6pdW9Luw20YTiEuwg/viewform?usp=dialog"
     
     list_items = ""
     for item in subsidies:
@@ -95,6 +95,6 @@ if __name__ == "__main__":
     try:
         data = fetch_data()
         generate_html_and_sitemap(data)
-        print("Success: index.html and sitemap.xml updated with AI summaries.")
+        print("Success: Automated assets updated.")
     except Exception as e:
         print(f"Process Error: {{e}}")
