@@ -1,74 +1,66 @@
-import os, hashlib, json, re, requests
+import os, requests, re
 from bs4 import BeautifulSoup
-from openai import OpenAI
 
-# 構成設定
-SOURCE_NAME = "J-Net21"
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# 構成設定：外部依存（OpenAI）をあえて排除し、速度と安定性を物理的に保証
+SOURCE_NAME = "J-Net21（中小機構）"
+SOURCE_URL = "https://j-net21.smrj.go.jp/snavi/articles"
 
-def ai_analyze_minimal(title):
-    """
-    推論を極限まで単純化。バッジの『テキスト』のみを生成させる。
-    """
+def fetch_clean_data():
+    """J-Net21から最新30件を、脚色なく物理的に取得する"""
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": '{"cat":"IT/製造/商業/他", "size":"大規模/中規模/少額"}'},
-                {"role": "user", "content": title}
-            ]
-        )
-        d = json.loads(response.choices[0].message.content)
-        return f"【{d.get('cat', '他')}】", f"[{d.get('size', '確認')}]"
-    except:
-        return "【他】", "[確認]"
-
-def fetch_all_new_data():
-    """取得件数を物理的に増やし、網羅性を担保する"""
-    url = "https://j-net21.smrj.go.jp/snavi/articles"
-    res = requests.get(url, timeout=30)
-    res.encoding = res.apparent_encoding
-    soup = BeautifulSoup(res.text, 'html.parser')
-    links = soup.find_all('a', href=re.compile(r'/snavi/articles/\d+'))
-    
-    unique_data = []
-    seen = set()
-    for a in links:
-        t = a.get_text(strip=True)
-        if len(t) > 10 and t not in seen:
-            h = a.get('href')
-            full_url = h if h.startswith('http') else "https://j-net21.smrj.go.jp" + h
-            unique_data.append({"title": t, "link": full_url})
-            seen.add(t)
-            if len(unique_data) >= 30: break # 30件まで拡張
-    return unique_data
+        res = requests.get(SOURCE_URL, timeout=20)
+        res.encoding = res.apparent_encoding
+        soup = BeautifulSoup(res.text, 'html.parser')
+        links = soup.find_all('a', href=re.compile(r'/snavi/articles/\d+'))
+        
+        data = []
+        seen = set()
+        for a in links:
+            t = a.get_text(strip=True)
+            if len(t) > 12 and t not in seen:
+                h = a.get('href')
+                full_url = h if h.startswith('http') else "https://j-net21.smrj.go.jp" + h
+                data.append({"title": t, "link": full_url})
+                seen.add(t)
+                if len(data) >= 30: break
+        return data
+    except Exception as e:
+        print(f"Fetch Error: {e}")
+        return []
 
 def generate_html(subsidies):
+    """装飾を捨て、情報の『鮮度』と『可読性』を最大化したHTMLを生成"""
     list_items = ""
     for item in subsidies:
-        cat_tag, size_tag = ai_analyze_minimal(item['title'])
-        
-        # 色に頼らず、テキストの太字と記号だけで情報を識別させる
+        # 物理的な区切り線と余白だけで情報を整理
         list_items += f"""
-        <article style="border-bottom:1px solid #e1e4e8; padding:20px 0; background:#ffffff;">
-            <div style="font-size:0.8rem; font-weight:bold; color:#2b6cb0; margin-bottom:8px;">
-                {cat_tag} {size_tag}
+        <article style="padding:24px 0; border-bottom:1px solid #eaecef;">
+            <h2 style="font-size:1.1rem; line-height:1.6; margin:0 0 16px 0; color:#1a1d21; font-weight:600;">
+                {item['title']}
+            </h2>
+            <div style="display:flex; justify-content:flex-start;">
+                <a href="{item['link']}" target="_blank" style="background-color:#1a1d21; color:#ffffff; padding:12px 24px; text-decoration:none; border-radius:6px; font-size:0.85rem; font-weight:bold;">
+                    公式サイトで要項を確認
+                </a>
             </div>
-            <h2 style="font-size:1rem; margin:0 0 15px 0; color:#1a1a1a; line-height:1.5;">{item['title']}</h2>
-            <a href="{item['link']}" target="_blank" style="display:inline-block; border:2px solid #2b6cb0; color:#2b6cb0; padding:10px 20px; text-decoration:none; border-radius:6px; font-size:0.85rem; font-weight:bold;">公式サイトを確認</a>
         </article>"""
     
-    html_content = f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>補助金DB</title></head>
-<body style="max-width:600px; margin:0 auto; background:#ffffff; padding:20px; font-family:sans-serif; color:#1a1a1a;">
-    <header style="border-bottom:3px solid #1a1a1a; padding-bottom:10px; margin-bottom:30px;">
-        <h1 style="font-size:1.5rem; margin:0;">AI補助金ナビ 2.0</h1>
-        <p style="font-size:0.8rem; color:#666;">J-Net21最新30件をAIが自動分類</p>
+    html_content = f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>補助金速報</title></head>
+<body style="max-width:600px; margin:0 auto; background-color:#ffffff; padding:40px 20px; font-family:-apple-system, sans-serif; color:#1a1d21;">
+    <header style="margin-bottom:40px;">
+        <h1 style="font-size:1.8rem; margin:0; letter-spacing:-0.03em;">補助金速報</h1>
+        <p style="font-size:0.9rem; color:#6a737d; margin-top:8px;">J-Net21最新30件：余計な加工を省いた最短アクセス</p>
     </header>
     <main>{list_items}</main>
+    <footer style="margin-top:60px; padding-bottom:40px; text-align:center; border-top:1px solid #eaecef; padding-top:20px;">
+        <p style="font-size:0.75rem; color:#6a737d;">出典：{SOURCE_NAME}<br>データ更新：毎日自動実行</p>
+    </footer>
 </body></html>"""
-    with open("index.html", "w", encoding="utf-8") as f: f.write(html_content)
+    
+    with open("index.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
 
 if __name__ == "__main__":
-    subsidies = fetch_all_new_data()
-    if subsidies: generate_html(subsidies)
+    subsidies = fetch_clean_data()
+    if subsidies:
+        generate_html(subsidies)
