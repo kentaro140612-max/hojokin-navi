@@ -22,12 +22,14 @@ def ai_analyze(title):
         summary = res_text.split("スコア：")[0].replace("要約：", "").strip().replace('\n', '<br>')
         score = res_text.split("スコア：")[1].strip() if "スコア：" in res_text else "★★★"
         return summary, score
-    except:
+    except Exception as e:
+        print(f"AI Error: {e}")
         return "詳細は公式資料を確認してください。", "★★★"
 
-def generate_html_and_sitemap(subsidies):
+def generate_html(subsidies):
     google_form_url = "https://docs.google.com/forms/d/e/1FAIpQLSddIW5zNLUuZLyQWIESX0EOZWZUM3dGM6pdW9Luw20YTiEuwg/viewform?usp=dialog"
     list_items = ""
+    
     for item in subsidies:
         summary, score = ai_analyze(item['title'])
         list_items += f"""
@@ -43,33 +45,41 @@ def generate_html_and_sitemap(subsidies):
             </div>
         </article>
         """
+        
     html_content = f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>AI補助金ナビ</title></head><body style="max-width: 600px; margin: 0 auto; background: #f1f3f4; padding: 20px; font-family: sans-serif;"><h1>AI補助金ナビ</h1><p>最終更新：{now}</p><main>{list_items}</main></body></html>"""
     
-    print(f"HTML Content length: {len(html_content)}")
     with open("index.html", "w", encoding="utf-8") as f:
         f.write(html_content)
+    print(f"Success: index.html updated. Length: {len(html_content)}")
 
 def fetch_data():
-    res = requests.get("https://j-net21.smrj.go.jp/snavi/articles", timeout=30)
+    url = "https://j-net21.smrj.go.jp/snavi/articles"
+    res = requests.get(url, timeout=30)
+    res.encoding = res.apparent_encoding
     soup = BeautifulSoup(res.text, 'html.parser')
-    articles = soup.find_all('h3')[:5]
-    return [{"title": a.get_text(strip=True), "link": "https://j-net21.smrj.go.jp" + a.find('a')['href']} for a in articles if a.find('a')]
+    
+    # セレクタの堅牢化：dt内のaタグを直接取得
+    links = soup.select('dt a')[:5]
+    
+    data = []
+    for a in links:
+        title = a.get_text(strip=True)
+        href = a.get('href')
+        if title and href:
+            full_url = href if href.startswith('http') else "https://j-net21.smrj.go.jp" + href
+            data.append({"title": title, "link": full_url})
+            
+    return data
 
 if __name__ == "__main__":
     try:
         subsidies = fetch_data()
-        print(f"DEBUG: Scraped {len(subsidies)} articles from J-Net21.")
+        print(f"DEBUG: Found {len(subsidies)} articles.")
         
-        if subsidies and len(subsidies) > 0:
-            generate_html_and_sitemap(subsidies)
-            # 書き出し後のファイル存在確認
-            if os.path.exists("index.html"):
-                size = os.path.getsize("index.html")
-                print(f"Success: index.html generated ({size} bytes).")
-            else:
-                print("Error: index.html was NOT created.")
+        if subsidies:
+            generate_html(subsidies)
         else:
-            print("Warning: No articles found. Scraping might have failed.")
+            print("Warning: No articles found. Check selector.")
             
     except Exception as e:
         print(f"Critical Error: {e}")
