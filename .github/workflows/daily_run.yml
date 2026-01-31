@@ -26,7 +26,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11' # 将来のサポート終了を考慮し3.11へ昇格
 
       - name: Install dependencies
         run: pip install requests google-api-python-client oauth2client beautifulsoup4 lxml
@@ -35,8 +35,8 @@ jobs:
         env:
           AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
-          # 【重要】あなたのサイトマップURLに書き換えてください
-          SITEMAP_URL: "https://your-site.com/sitemap.xml"
+          # Softrの標準サイトマップURLを設定
+          SITEMAP_URL: "https://subsidy-checker-2026.softr.app/sitemap.xml"
         run: |
           python -c "
           import os
@@ -51,23 +51,27 @@ jobs:
               try:
                   print(f'[{datetime.datetime.now()}] Starting Indexing API process...')
                   
-                  # 1. サイトマップからのURL抽出
                   sitemap_url = os.environ.get('SITEMAP_URL')
                   res = requests.get(sitemap_url, timeout=30)
-                  res.raise_for_status()
-                  soup = BeautifulSoup(res.content, 'xml')
                   
-                  # 200件制限を考慮し、最新の100件を抽出（削除は行わない）
+                  # エラーチェック: サイトマップが存在しない場合のハンドリング
+                  if res.status_code != 200:
+                      raise ConnectionError(f'Sitemap not found at {sitemap_url}. Status code: {res.status_code}')
+                  
+                  soup = BeautifulSoup(res.content, 'xml')
                   urls = [loc.text for loc in soup.find_all('loc')][:100]
+                  
+                  if not urls:
+                      print('Warning: No URLs found in sitemap.')
+                      return
+
                   print(f'Detected {len(urls)} URLs from sitemap.')
 
-                  # 2. Google API 認証
                   creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
                   scopes = ['https://www.googleapis.com/auth/indexing']
                   credentials = service_account.Credentials.from_service_account_file(creds_path, scopes=scopes)
                   service = build('indexing', 'v1', credentials=credentials)
 
-                  # 3. 各URLの通知実行
                   for url in urls:
                       try:
                           body = {'url': url, 'type': 'URL_UPDATED'}
