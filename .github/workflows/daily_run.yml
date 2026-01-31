@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 全履歴を取得してPushの衝突を回避
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -21,19 +23,17 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 openai supabase
+        run: pip install requests beautifulsoup4 openai
 
       - name: Run script to generate HTML
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python main.py
 
       - name: Commit and Push index.html
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add index.html
-          git commit -m "Update index.html with latest data" || exit 0
-          git push
+          git add index.html sitemap.xml
+          # 変更がある場合のみコミットし、強制的にmainブランチへpushする
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update index.html with latest data" && git push origin main)
