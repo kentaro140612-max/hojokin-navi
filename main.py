@@ -54,14 +54,24 @@ def fetch_data():
     res = requests.get(url, timeout=30)
     res.encoding = res.apparent_encoding
     soup = BeautifulSoup(res.text, 'html.parser')
-    links = soup.select('dt a')[:5]
+    
+    # href属性に "/snavi/articles/" を含み、かつ数字が続くリンクを抽出
+    import re
+    all_links = soup.find_all('a', href=re.compile(r'/snavi/articles/\d+'))
+    
     data = []
-    for a in links:
+    seen_titles = set()
+    
+    for a in all_links:
         title = a.get_text(strip=True)
         href = a.get('href')
-        if title and href:
+        # タイトルが短すぎるもの、重複、空のものを除外
+        if len(title) > 5 and title not in seen_titles:
             full_url = href if href.startswith('http') else "https://j-net21.smrj.go.jp" + href
             data.append({"title": title, "link": full_url})
+            seen_titles.add(title)
+            if len(data) >= 5: break # 上位5件
+            
     return data
 
 if __name__ == "__main__":
