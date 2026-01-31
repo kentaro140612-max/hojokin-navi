@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 from openai import OpenAI
+import re
 
 # 日本標準時
 now = datetime.now().strftime('%Y年%m月%d日 %H:%M')
@@ -19,35 +20,34 @@ def ai_analyze(title):
             max_tokens=250
         )
         res_text = response.choices[0].message.content
+        # 要約とスコアの抽出
         summary = res_text.split("スコア：")[0].replace("要約：", "").strip().replace('\n', '<br>')
         score = res_text.split("スコア：")[1].strip() if "スコア：" in res_text else "★★★"
         return summary, score
-    except:
+    except Exception as e:
+        print(f"AI Error: {e}")
         return "詳細は公式資料を確認してください。", "★★★"
 
 def generate_html(subsidies):
-    google_form_url = "https://docs.google.com/forms/d/e/1FAIpQLSddIW5zNLUuZLyQWIESX0EOZWZUM3dGM6pdW9Luw20YTiEuwg/viewform?usp=dialog"
     list_items = ""
     for item in subsidies:
         summary, score = ai_analyze(item['title'])
+        # シングルボタン構成：認知負荷の低減
         list_items += f"""
-        <article style="border: 1px solid #eee; padding: 25px; margin-bottom: 25px; border-radius: 15px; background: #fff;">
-            <div style="display: flex; justify-content: space-between;">
-                <h2 style="color: #1a73e8; font-size: 1.1rem;">{item['title']}</h2>
-                <span style="color: #e65100; font-weight: bold;">{score}</span>
+        <article style="border: 1px solid #eee; padding: 25px; margin-bottom: 25px; border-radius: 15px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                <h2 style="color: #1a73e8; font-size: 1.1rem; margin: 0; flex: 1; padding-right: 10px;">{item['title']}</h2>
+                <span style="background: #fff3e0; color: #e65100; font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; white-space: nowrap;">重要度 {score}</span>
             </div>
-            <p style="font-size: 0.9rem; line-height: 1.6;">{summary}</p>
-            <div style="display: flex; gap: 10px;">
-                <a href="{item['link']}" target="_blank" style="flex: 1; text-align: center; border: 1px solid #ccc; padding: 10px; text-decoration: none; border-radius: 5px; color: #333;">公式資料</a>
-                <a href="{google_form_url}" target="_blank" style="flex: 1; text-align: center; background: #1a73e8; color: #fff; padding: 10px; text-decoration: none; border-radius: 5px;">無料相談</a>
-            </div>
+            <p style="font-size: 0.9rem; line-height: 1.6; color: #3c4043; margin-bottom: 20px;">{summary}</p>
+            <a href="{item['link']}" target="_blank" style="display: block; text-align: center; background: #1a73e8; color: #fff; padding: 12px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 0.9rem;">公式資料を詳しく見る</a>
         </article>"""
     
-    html_content = f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>AI補助金ナビ</title></head><body style="max-width: 600px; margin: 0 auto; background: #f1f3f4; padding: 20px; font-family: sans-serif;"><h1>AI補助金ナビ</h1><p>最終更新：{now}</p><main>{list_items}</main></body></html>"""
+    html_content = f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>AI補助金ナビ</title></head><body style="max-width: 600px; margin: 0 auto; background: #f1f3f4; padding: 20px; font-family: sans-serif;"><h1>AI補助金ナビ</h1><p style="color: #5f6368; font-size: 0.9rem;">最終更新：{now}</p><main>{list_items}</main></body></html>"""
     
     with open("index.html", "w", encoding="utf-8") as f:
         f.write(html_content)
-    print(f"DEBUG: index.html was written successfully. Length: {len(html_content)}")
+    print(f"DEBUG: index.html update complete. Length: {len(html_content)}")
 
 def fetch_data():
     url = "https://j-net21.smrj.go.jp/snavi/articles"
@@ -55,22 +55,19 @@ def fetch_data():
     res.encoding = res.apparent_encoding
     soup = BeautifulSoup(res.text, 'html.parser')
     
-    # href属性に "/snavi/articles/" を含み、かつ数字が続くリンクを抽出
-    import re
+    # URLパターンに基づく堅牢な抽出
     all_links = soup.find_all('a', href=re.compile(r'/snavi/articles/\d+'))
     
     data = []
     seen_titles = set()
-    
     for a in all_links:
         title = a.get_text(strip=True)
         href = a.get('href')
-        # タイトルが短すぎるもの、重複、空のものを除外
         if len(title) > 5 and title not in seen_titles:
             full_url = href if href.startswith('http') else "https://j-net21.smrj.go.jp" + href
             data.append({"title": title, "link": full_url})
             seen_titles.add(title)
-            if len(data) >= 5: break # 上位5件
+            if len(data) >= 5: break
             
     return data
 
