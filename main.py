@@ -13,18 +13,24 @@ def ai_analyze(title):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "補助金タイトルを分析し、以下形式で出力せよ。1. 要約：(30文字以内の概要) 2. 金額：(「最大◯◯万円」や「実費」など。不明なら「要確認」) 3. スコア：(★1-5)"},
+                {"role": "system", "content": """補助金タイトルを分析し、SEOを意識して出力せよ。
+1. 要約：(30文字以内の概要。検索意図に沿った言葉選び)
+2. 金額：(最大◯◯万円、または要確認)
+3. スコア：(★1-5)
+4. タグ：(業種や目的。例：IT導入, 創業, 製造業など、コンマ区切り3つ)"""},
                 {"role": "user", "content": title}
             ],
-            max_tokens=250
+            max_tokens=300
         )
         res_text = response.choices[0].message.content
         summary = res_text.split("2. 金額：")[0].replace("1. 要約：", "").strip()
         amount = res_text.split("2. 金額：")[1].split("3. スコア：")[0].strip()
-        score = res_text.split("3. スコア：")[1].strip() if "3. スコア：" in res_text else "★★★"
-        return summary, amount, score
+        parts = res_text.split("3. スコア：")[1].split("4. タグ：")
+        score = parts[0].strip()
+        tags = parts[1].strip() if len(parts) > 1 else "補助金, 最新"
+        return summary, amount, score, tags
     except:
-        return "公式資料を確認してください。", "要確認", "★★★"
+        return "公式資料を確認してください。", "要確認", "★★★", "補助金, 最新"
 
 def generate_html(subsidies):
     list_items = ""
